@@ -5,7 +5,7 @@ import ore
 import os
 import tensorflow as tf
 
-from mnist_dcgan import discriminator, generator
+from dcgan_mnist import discriminator, generator
 from six.moves import range
 
 
