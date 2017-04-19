@@ -5,13 +5,16 @@ import ore
 import os
 import tensorflow as tf
 
-from dcgan import discriminator, generator
+from dcgan_lsun import discriminator, generator
 from six.moves import range
 
 
-tf.app.flags.DEFINE_string('logs-dir-path', './xwgan/logs/', '')
-tf.app.flags.DEFINE_string('outputs-dir-path', './xwgan/outputs/', '')
-tf.app.flags.DEFINE_string('checkpoints-dir-path', './xwgan/checkpoints/', '')
+tf.app.flags.DEFINE_string(
+    'logs-dir-path', './xwgan/logs/lsun/', '')
+tf.app.flags.DEFINE_string(
+    'outputs-dir-path', './xwgan/outputs/', '')
+tf.app.flags.DEFINE_string(
+    'checkpoints-dir-path', './xwgan/checkpoints/lsun/', '')
 tf.app.flags.DEFINE_integer('batch-size', 64, '')
 tf.app.flags.DEFINE_integer('seed-size', 100, '')
 tf.app.flags.DEFINE_integer('summary-row-size', 8, '')
@@ -94,7 +97,7 @@ def build_xwgan():
 
     gradient_penalty = tf.reduce_mean((gradients_norm - 1.0) ** 2.0)
 
-    #
+    # loss
     discriminator_loss = tf.reduce_mean(
         discriminate_fake - discriminate_real) + 10.0 * gradient_penalty
 

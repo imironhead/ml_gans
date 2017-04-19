@@ -17,10 +17,17 @@ def leaky_relu(x, leak=0.2, name="lrelu"):
 
 def discriminator(source, reuse):
     """
+    build the discriminator network.
+    source:
+        The input image to discriminate
+    reuse:
+        Reuse the network. The network is used for traning both discriminator
+        and generator. When training generator, use the loss from discriminator
+        without updating it.
     """
     weights_initializer = tf.truncated_normal_initializer(stddev=0.02)
 
-    # # arXiv:1511.06434v2
+    # arXiv:1511.06434v2
     # build convolutional net to downsample.
     # no pooling layers.
     for layer_idx in range(4):
@@ -45,19 +52,7 @@ def discriminator(source, reuse):
             scope='d_conv_{}'.format(layer_idx),
             reuse=reuse)
 
-    # for fully connected layer
-    source = tf.contrib.layers.flatten(source)
-
-    # fully connected layer to binary classify
-    # source = tf.contrib.layers.fully_connected(
-    #     inputs=source,
-    #     num_outputs=1,
-    #     activation_fn=tf.nn.sigmoid,
-    #     weights_initializer=weights_initializer,
-    #     scope='d_out',
-    #     reuse=reuse)
-
-    return source
+    return tf.contrib.layers.flatten(source)
 
 
 def generator(seed):

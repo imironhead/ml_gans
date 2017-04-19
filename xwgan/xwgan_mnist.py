@@ -9,9 +9,12 @@ from dcgan_mnist import discriminator, generator
 from six.moves import range
 
 
-tf.app.flags.DEFINE_string('logs-dir-path', './xwgan/logs/', '')
-tf.app.flags.DEFINE_string('outputs-dir-path', './xwgan/outputs/', '')
-tf.app.flags.DEFINE_string('checkpoints-dir-path', './xwgan/checkpoints/', '')
+tf.app.flags.DEFINE_string(
+    'logs-dir-path', './xwgan/logs/mnist/', '')
+tf.app.flags.DEFINE_string(
+    'outputs-dir-path', './xwgan/outputs/', '')
+tf.app.flags.DEFINE_string(
+    'checkpoints-dir-path', './xwgan/checkpoints/mnist/', '')
 tf.app.flags.DEFINE_integer('batch-size', 64, '')
 tf.app.flags.DEFINE_integer('seed-size', 100, '')
 tf.app.flags.DEFINE_integer('summary-row-size', 8, '')
