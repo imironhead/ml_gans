@@ -4,6 +4,7 @@ import numpy as np
 import ore
 import os
 import tensorflow as tf
+import time
 
 from dcgan_lsun import discriminator, generator
 from six.moves import range
@@ -19,6 +20,7 @@ tf.app.flags.DEFINE_integer('batch-size', 64, '')
 tf.app.flags.DEFINE_integer('seed-size', 128, '')
 tf.app.flags.DEFINE_integer('summary-row-size', 8, '')
 tf.app.flags.DEFINE_integer('summary-col-size', 8, '')
+tf.app.flags.DEFINE_boolean('generate', False, '')
 
 FLAGS = tf.app.flags.FLAGS
 
@@ -158,6 +160,7 @@ def build_summaries(gan_graph):
         'generated image', fake_grid, max_outputs=1)
 
     return {
+        'generated_png': tf.image.encode_png(fake_grid[0]),
         'generator_fake_summary': generator_fake_summary,
         'generator_loss_summary': generator_loss_summary,
         'discriminator_loss_summary': discriminator_loss_summary,
@@ -196,6 +199,46 @@ def next_fake_batch():
         size=[FLAGS.batch_size, FLAGS.seed_size])
 
     return batch.astype(np.float32)
+
+
+def generate():
+    """
+    """
+    print('generating')
+
+    checkpoint_source_path = tf.train.latest_checkpoint(
+        FLAGS.checkpoints_dir_path)
+
+    gan_graph = build_xwgan()
+    summaries = build_summaries(gan_graph)
+
+    fake_sources = np.zeros(
+        [FLAGS.summary_row_size * FLAGS.summary_col_size, FLAGS.seed_size])
+
+    seed_o = np.random.uniform(-0.5, 0.5, size=[FLAGS.seed_size])
+    seed_x = np.random.uniform(-0.1, 0.1, size=[FLAGS.seed_size])
+    seed_y = np.random.uniform(-0.1, 0.1, size=[FLAGS.seed_size])
+
+    for y in range(FLAGS.summary_row_size):
+        seed_t = seed_o + y * seed_y
+
+        for x in range(FLAGS.summary_col_size):
+            fake_sources[x * FLAGS.summary_row_size + y] = seed_t + x * seed_x
+
+    with tf.Session() as session:
+        tf.train.Saver().restore(session, checkpoint_source_path)
+
+        fetch = summaries['generated_png']
+
+        feeds = {gan_graph['seed']: fake_sources}
+
+        png = session.run(fetch, feed_dict=feeds)
+
+        png_path = os.path.join(
+            FLAGS.outputs_dir_path, time.strftime('%Y%m%d_%H%M%S') + '.png')
+
+        with tf.gfile.GFile(png_path, 'wb') as f:
+            f.write(png)
 
 
 def train():
@@ -291,7 +334,10 @@ def main(_):
     """
     sanity_check()
 
-    train()
+    if FLAGS.generate:
+        generate()
+    else:
+        train()
 
 
 if __name__ == '__main__':
