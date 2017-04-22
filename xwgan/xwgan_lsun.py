@@ -16,7 +16,7 @@ tf.app.flags.DEFINE_string(
 tf.app.flags.DEFINE_string(
     'checkpoints-dir-path', './xwgan/checkpoints/lsun/', '')
 tf.app.flags.DEFINE_integer('batch-size', 64, '')
-tf.app.flags.DEFINE_integer('seed-size', 100, '')
+tf.app.flags.DEFINE_integer('seed-size', 128, '')
 tf.app.flags.DEFINE_integer('summary-row-size', 8, '')
 tf.app.flags.DEFINE_integer('summary-col-size', 8, '')
 

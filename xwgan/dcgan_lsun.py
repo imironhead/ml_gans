@@ -7,12 +7,9 @@ from six.moves import range
 
 def leaky_relu(x, leak=0.2, name="lrelu"):
     """
-    https://github.com/tensorflow/tensorflow/issues/4079
+    https://github.com/igul222/improved_wgan_training/blob/master/gan_64x64.py
     """
-    with tf.variable_scope(name):
-        f1 = 0.5 * (1.0 + leak)
-        f2 = 0.5 * (1.0 - leak)
-        return f1 * x + f2 * abs(x)
+    return tf.maximum(x * leak, x)
 
 
 def discriminator(source, reuse):
@@ -42,17 +39,26 @@ def discriminator(source, reuse):
         # in discriminator, use LeakyReLU
         source = tf.contrib.layers.convolution2d(
             inputs=source,
-            num_outputs=2 ** (7 + layer_idx),
+            num_outputs=2 ** (6 + layer_idx),
             kernel_size=5,
             stride=2,
             padding='SAME',
             activation_fn=leaky_relu,
-            normalizer_fn=normalizer_fn,
+            # normalizer_fn=normalizer_fn,
             weights_initializer=weights_initializer,
             scope='d_conv_{}'.format(layer_idx),
             reuse=reuse)
 
-    return tf.contrib.layers.flatten(source)
+    source = tf.contrib.layers.flatten(source)
+
+    source = tf.contrib.layers.fully_connected(
+        inputs=source,
+        num_outputs=4 * 4 * 8 * 64,
+        weights_initializer=weights_initializer,
+        scope='d_out',
+        reuse=reuse)
+
+    return source
 
 
 def generator(seed):
@@ -65,14 +71,14 @@ def generator(seed):
     # convolutional net.
     target = tf.contrib.layers.fully_connected(
         inputs=seed,
-        num_outputs=4 * 4 * 1024,
+        num_outputs=4 * 4 * 512,
         activation_fn=tf.nn.relu,
-        normalizer_fn=None,
+        # normalizer_fn=tf.contrib.layers.batch_norm,
         weights_initializer=weights_initializer,
         scope='g_project')
 
     # reshape to images
-    target = tf.reshape(target, [-1, 4, 4, 1024])
+    target = tf.reshape(target, [-1, 4, 4, 512])
 
     # transpose convolution to upscale
     for layer_idx in xrange(4):
@@ -87,7 +93,7 @@ def generator(seed):
             # use batch norm except the output layer
             normalizer_fn = None
         else:
-            num_outputs = 2 ** (9 - layer_idx)
+            num_outputs = 2 ** (8 - layer_idx)
 
             # arXiv:1511.06434v2
             # use ReLU
@@ -104,7 +110,7 @@ def generator(seed):
             stride=2,
             padding='SAME',
             activation_fn=activation_fn,
-            normalizer_fn=normalizer_fn,
+            # normalizer_fn=normalizer_fn,
             weights_initializer=weights_initializer,
             scope='g_conv_t_{}'.format(layer_idx))
 
