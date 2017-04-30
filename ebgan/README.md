@@ -1,6 +1,14 @@
 # Replicated "Energy-Based Generative Adversarial Networks"
 
----
+
+## Commands:
+
+* **logs-dir-path** : path to the directory for tensorboard.
+* **checkpoints-dir-path** : path to the directory to keep and load checkpoints.
+* **discriminator-margin** : margin of discriminator loss introduced by generator.
+* **batch-size** : batch size of training size.
+* **seed-size** : size of seed for fake images.
+
 
 ## Notes:
 
@@ -10,7 +18,6 @@
 * Two layer autoencoder was built in the beginning. But it did not work because it's too difficult to extract features (encoder) with only 2 layers.
 * The **margin** (M) does matter.
 
----
 
 ## M=2
 
@@ -20,7 +27,6 @@
 
 ![](../assets/ebgan_mnist_m2_00458500.png)
 
----
 
 ## M=8
 
@@ -30,7 +36,6 @@
 
 ![](../assets/ebgan_mnist_m8_00159000.png)
 
----
 
 ## M=16
 
