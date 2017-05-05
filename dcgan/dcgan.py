@@ -222,8 +222,10 @@ def build_dcgan():
         elif variable.name.startswith('g_'):
             g_variables.append(variable)
 
+    learning_rate = 0.00002 if FLAGS.use_lsun else 0.0002
+
     generator_trainer = tf.train.AdamOptimizer(
-        learning_rate=0.00002, beta1=0.5)
+        learning_rate=learning_rate, beta1=0.5)
     generator_trainer = generator_trainer.minimize(
         generator_loss,
         global_step=global_step,
@@ -231,7 +233,7 @@ def build_dcgan():
         colocate_gradients_with_ops=False)
 
     discriminator_trainer = tf.train.AdamOptimizer(
-        learning_rate=0.00002, beta1=0.5)
+        learning_rate=learning_rate, beta1=0.5)
     discriminator_trainer = discriminator_trainer.minimize(
         discriminator_loss,
         var_list=d_variables,
