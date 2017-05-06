@@ -1,4 +1,5 @@
 # Replicated Results of Generative Adversarial Networks Papers
 
-* **xwgan**: Improved Training of Wasserstein GANs
+* **dcgan**: Unsupervised Representation Learning with Deep Convolutional Generative Adversarial Networks
 * **ebgan**: Energy-Based Generative Adversarial Networks
+* **xwgan**: Improved Training of Wasserstein GANs
