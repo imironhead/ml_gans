@@ -101,7 +101,7 @@ def build_xwgan():
 
     # loss
     discriminator_loss = tf.reduce_mean(
-        discriminate_fake - discriminate_real) + 10.0 * gradient_penalty
+        discriminate_fake - discriminate_real) + 1.0 * gradient_penalty
 
     generator_loss = -tf.reduce_mean(discriminate_fake)
 
@@ -244,7 +244,7 @@ def generate():
 def train():
     """
     """
-    reader = ore.RandomReader(ore.DATASET_LSUN_BEDROOM_VALIDATION)
+    reader = ore.RandomReader(ore.DATASET_LSUN_BEDROOM_TRAINING)
 
     # tensorflow
     checkpoint_source_path = tf.train.latest_checkpoint(
@@ -322,7 +322,7 @@ def train():
             if global_step % 100 == 0:
                 print('[{}]: {}'.format(global_step, returns[1]))
 
-            if global_step % 1000 == 0:
+            if global_step % 500 == 0:
                 tf.train.Saver().save(
                     session,
                     checkpoint_target_path,
