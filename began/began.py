@@ -8,6 +8,7 @@ import tensorflow as tf
 from six.moves import range
 
 
+tf.app.flags.DEFINE_string('portraits-dir-path', '', '')
 tf.app.flags.DEFINE_string('logs-dir-path', './began/logs/', '')
 tf.app.flags.DEFINE_string('checkpoints-dir-path', './began/checkpoints/', '')
 
@@ -16,6 +17,10 @@ tf.app.flags.DEFINE_string('checkpoints-dir-path', './began/checkpoints/', '')
 tf.app.flags.DEFINE_integer('batch-size', 16, '')
 
 tf.app.flags.DEFINE_integer('image-size', 64, '')
+
+tf.app.flags.DEFINE_boolean('need-crop-image', False, '')
+tf.app.flags.DEFINE_integer('image-offset-x', 25, '')
+tf.app.flags.DEFINE_integer('image-offset-y', 50, '')
 
 # arXiv:1703.10717v2
 # 4.1
@@ -40,6 +45,9 @@ FLAGS = tf.app.flags.FLAGS
 def sanity_check():
     """
     """
+    if not os.path.isdir(FLAGS.portraits_dir_path):
+        raise Exception('invalid portraits directory')
+
     run_name = '{}_{}_{}_{}'.format(
         FLAGS.seed_size, FLAGS.embedding_size, FLAGS.image_size,
         FLAGS.mysterious_n)
@@ -194,8 +202,9 @@ def autoencoder_loss(upstream, downstream):
 def build_dataset_reader():
     """
     """
-    paths_png = glob.glob(
-        '/home/ironhead/datasets/celeba/img_align_celeba_png/*.png')
+    paths_png_wildcards = os.path.join(FLAGS.portraits_dir_path, '*.png')
+
+    paths_png = glob.glob(paths_png_wildcards)
 
     file_name_queue = tf.train.string_input_producer(paths_png)
 
@@ -205,10 +214,17 @@ def build_dataset_reader():
 
     image = tf.image.decode_png(reader_val, channels=3, dtype=tf.uint8)
 
-    image = tf.image.crop_to_bounding_box(image, 50, 25, 128, 128)
+    # assume the size of input images are either 128x128x3 or 64x64x3.
 
-    if FLAGS.image_size == 64:
-        image = tf.image.resize_images(image, [64, 64])
+    if FLAGS.need_crop_image:
+        image = tf.image.crop_to_bounding_box(
+            image,
+            FLAGS.image_offset_y,
+            FLAGS.image_offset_x,
+            FLAGS.image_size,
+            FLAGS.image_size)
+
+    image = tf.image.resize_images(image, [FLAGS.image_size, FLAGS.image_size])
 
     image = tf.cast(image, dtype=tf.float32) / 127.5 - 1.0
 
