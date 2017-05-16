@@ -59,26 +59,31 @@ def sanity_check():
 def build_decoder(flow, scope_prefix, reuse):
     """
     """
-    layer_size = 8
-
     weights_initializer = tf.truncated_normal_initializer(stddev=0.02)
 
+    # arXiv:1703.10717, Figure 1
+    # project to [-1, 8x8xn] and reshape to [-1, 8, 8, n] later.
     flow = tf.contrib.layers.fully_connected(
         inputs=flow,
-        num_outputs=layer_size * layer_size * FLAGS.mysterious_n,
+        num_outputs=8 * 8 * FLAGS.mysterious_n,
         activation_fn=tf.nn.elu,
         weights_initializer=weights_initializer,
         scope='{}_project'.format(scope_prefix),
         reuse=reuse)
 
-    # reshape to images
-    flow = tf.reshape(flow, [-1, layer_size, layer_size, FLAGS.mysterious_n])
+    # arXiv:1703.10717, Figure 1
+    # reshape to [-1, 8, 8, n]
+    flow = tf.reshape(flow, [-1, 8, 8, FLAGS.mysterious_n])
+
+    layer_size = 8
 
     while True:
         for repeat in range(2):
             if layer_size != 8 and repeat == 0:
+                # arXiv:1703.10717, Figure 1, upsampling.
                 stride = 2
             else:
+                # arXiv:1703.10717, Figure 1, repeating.
                 stride = 1
 
             flow = tf.contrib.layers.convolution2d_transpose(
@@ -97,6 +102,8 @@ def build_decoder(flow, scope_prefix, reuse):
 
         layer_size += layer_size
 
+    # arXiv:1703.10717, Figure 1
+    # no upsampling and convolve to 3 channels (RGB, [-1.0, +1.0])
     flow = tf.contrib.layers.convolution2d_transpose(
         inputs=flow,
         num_outputs=3,
@@ -181,11 +188,7 @@ def autoencoder_loss(upstream, downstream):
     downstream:
         output images. decoded images from autoencoder.
     """
-    l = FLAGS.image_size * FLAGS.image_size * 3
-    k = tf.reshape(upstream - downstream, [-1, l])
-    k = tf.norm(k, 1, axis=1)
-
-    return tf.reduce_mean(k)
+    return tf.reduce_mean(tf.abs(upstream - downstream))
 
 
 def build_dataset_reader():
@@ -204,7 +207,8 @@ def build_dataset_reader():
 
     image = tf.image.crop_to_bounding_box(image, 50, 25, 128, 128)
 
-    image = tf.image.resize_images(image, [64, 64])
+    if FLAGS.image_size == 64:
+        image = tf.image.resize_images(image, [64, 64])
 
     image = tf.cast(image, dtype=tf.float32) / 127.5 - 1.0
 
@@ -312,7 +316,11 @@ def build_summaries(gan):
     discriminator_loss_summary = tf.summary.scalar(
         'discriminator loss', gan['discriminator_loss'])
 
-    fake_grid = tf.reshape(gan['generator_fake'], [1, 16 * 64, 64, 3])
+    batch_size = FLAGS.batch_size
+    image_size = FLAGS.image_size
+
+    fake_grid = tf.reshape(
+        gan['generator_fake'], [1, batch_size * image_size, image_size, 3])
     fake_grid = tf.split(fake_grid, 4, axis=1)
     fake_grid = tf.concat(fake_grid, axis=2)
     fake_grid = tf.saturate_cast(fake_grid * 127.5 + 127.5, tf.uint8)
@@ -320,7 +328,8 @@ def build_summaries(gan):
     generator_fake_summary = tf.summary.image(
         'generated image', fake_grid, max_outputs=4)
 
-    temp_grid = tf.reshape(gan['discriminate_real'], [1, 16 * 64, 64, 3])
+    temp_grid = tf.reshape(
+        gan['discriminate_real'], [1, batch_size * image_size, image_size, 3])
     temp_grid = tf.split(temp_grid, 4, axis=1)
     temp_grid = tf.concat(temp_grid, axis=2)
     temp_grid = tf.saturate_cast(temp_grid * 127.5 + 127.5, tf.uint8)
@@ -379,10 +388,7 @@ def train():
                 gan_graph['loss_real'],
             ]
 
-            feeds = {
-                # gan_graph['seed']: fake_sources,
-                # gan_graph['real']: real_sources,
-            }
+            feeds = {}
 
             if global_step % 500 == 0:
                 fetches.append(summaries['discriminator_temp_summary'])
