@@ -1,7 +1,6 @@
 """
 """
 import glob
-import numpy as np
 import os
 import tensorflow as tf
 
@@ -282,10 +281,15 @@ def build_began():
 
     # arXiv:1703.10717, 3.4
     # update control variable k
-    next_k = k + FLAGS.k_learning_rate * (
-        FLAGS.diversity_ratio * ae_loss_real - ae_loss_fake)
+    ae_loss_diff = FLAGS.diversity_ratio * ae_loss_real - ae_loss_fake
+
+    next_k = k + FLAGS.k_learning_rate * ae_loss_diff
     next_k = tf.clip_by_value(next_k, 0.0, 1.0)
     next_k = k.assign(next_k)
+
+    # arXiv:1703.10717, 3.4.1
+    # convergence measure, M_global.
+    convergence_measure = ae_loss_real + tf.abs(ae_loss_diff)
 
     #
     d_variables = []
@@ -326,45 +330,57 @@ def build_began():
         'generator_trainer': generator_trainer,
         'discriminator_loss': discriminator_loss,
         'discriminator_trainer': discriminator_trainer,
+        'convergence_measure': convergence_measure,
     }
+
+
+def reshape_batch_images(batch_images):
+    """
+    """
+    batch_size = FLAGS.batch_size
+    image_size = FLAGS.image_size
+
+    # build summary for generated fake images.
+    grid = \
+        tf.reshape(batch_images, [1, batch_size * image_size, image_size, 3])
+    grid = tf.split(grid, FLAGS.summary_row_size, axis=1)
+    grid = tf.concat(grid, axis=2)
+    grid = tf.saturate_cast(grid * 127.5 + 127.5, tf.uint8)
+
+    return grid
 
 
 def build_summaries(gan):
     """
     """
-    generator_loss_summary = tf.summary.scalar(
-        'generator loss', gan['generator_loss'])
+    summaries = {}
 
-    discriminator_loss_summary = tf.summary.scalar(
-        'discriminator loss', gan['discriminator_loss'])
+    # build scalar summaries
+    scalar_table = [
+        ('summary_convergence_measure', 'convergence_measure',
+         'convergence measure'),
+        ('summary_generator_loss', 'generator_loss', 'generator loss'),
+        ('summary_discriminator_loss', 'discriminator_loss',
+         'discriminator loss'),
+    ]
 
-    batch_size = FLAGS.batch_size
-    image_size = FLAGS.image_size
+    for scalar in scalar_table:
+        summaries[scalar[0]] = tf.summary.scalar(scalar[2], gan[scalar[1]])
 
-    fake_grid = tf.reshape(
-        gan['fake'], [1, batch_size * image_size, image_size, 3])
-    fake_grid = tf.split(fake_grid, 4, axis=1)
-    fake_grid = tf.concat(fake_grid, axis=2)
-    fake_grid = tf.saturate_cast(fake_grid * 127.5 + 127.5, tf.uint8)
+    # build image summaries
+    image_table = [
+        ('summary_real', 'real', 'real image'),
+        ('summary_fake', 'fake', 'generated image'),
+        ('summary_ae_real', 'ae_output_real', 'autoencoder real'),
+        ('summary_ae_fake', 'ae_output_fake', 'autoencoder fake')
+    ]
 
-    generator_fake_summary = tf.summary.image(
-        'generated image', fake_grid, max_outputs=4)
+    for table in image_table:
+        grid = reshape_batch_images(gan[table[1]])
 
-    temp_grid = tf.reshape(
-        gan['ae_output_real'], [1, batch_size * image_size, image_size, 3])
-    temp_grid = tf.split(temp_grid, 4, axis=1)
-    temp_grid = tf.concat(temp_grid, axis=2)
-    temp_grid = tf.saturate_cast(temp_grid * 127.5 + 127.5, tf.uint8)
+        summaries[table[0]] = tf.summary.image(table[2], grid, max_outputs=4)
 
-    discriminator_temp_summary = tf.summary.image(
-        'autoencoder image', temp_grid, max_outputs=4)
-
-    return {
-        'generator_fake_summary': generator_fake_summary,
-        'generator_loss_summary': generator_loss_summary,
-        'discriminator_loss_summary': discriminator_loss_summary,
-        'discriminator_temp_summary': discriminator_temp_summary,
-    }
+    return summaries
 
 
 def train():
@@ -398,62 +414,40 @@ def train():
             global_step=global_step)
 
         while True:
+            # discriminator
             fetches = [
-                gan_graph['discriminator_loss'],
-                gan_graph['discriminator_trainer'],
-                summaries['discriminator_loss_summary'],
                 gan_graph['next_k'],
-                gan_graph['ae_loss_real'],
+                gan_graph['discriminator_trainer'],
+                summaries['summary_convergence_measure'],
+                summaries['summary_discriminator_loss'],
             ]
 
-            feeds = {}
-
             if global_step % 500 == 0:
-                fetches.append(summaries['discriminator_temp_summary'])
+                fetches.append(summaries['summary_fake'])
+                fetches.append(summaries['summary_real'])
+                fetches.append(summaries['summary_ae_fake'])
+                fetches.append(summaries['summary_ae_real'])
 
-            returns = session.run(fetches, feed_dict=feeds)
+            returns = session.run(fetches)
 
-            d_loss_summary = returns[2]
+            for summary in returns[2:]:
+                reporter.add_summary(summary, global_step)
 
-            ae_loss_real = returns[4]
-
-            reporter.add_summary(d_loss_summary, global_step)
-
-            if global_step % 500 == 0:
-                reporter.add_summary(returns[5], global_step)
-
-            log_fakes = (global_step % 500 == 0)
-
+            # generator
             fetches = [
-                gan_graph['global_step'],
-                gan_graph['generator_loss'],
                 gan_graph['generator_trainer'],
-                summaries['generator_loss_summary'],
-                gan_graph['ae_loss_fake'],
+                gan_graph['global_step'],
+                summaries['summary_generator_loss'],
             ]
 
-            feeds = {}
+            returns = session.run(fetches)
 
-            if log_fakes:
-                fetches.append(summaries['generator_fake_summary'])
+            global_step = returns[1]
 
-            returns = session.run(fetches, feed_dict=feeds)
-
-            global_step = returns[0]
-            g_loss_summary = returns[3]
-
-            reporter.add_summary(g_loss_summary, global_step)
-
-            if log_fakes:
-                reporter.add_summary(returns[5], global_step)
+            reporter.add_summary(returns[2], global_step)
 
             if global_step % 100 == 0:
-                ae_loss_fake = returns[4]
-
-                mg = ae_loss_real + np.abs(
-                    FLAGS.diversity_ratio * ae_loss_real - ae_loss_fake)
-
-                print('[{}]: {}, {}'.format(global_step, returns[1], mg))
+                print('step {}'.format(global_step))
 
             if global_step % 5000 == 0:
                 tf.train.Saver().save(
