@@ -36,6 +36,10 @@ tf.app.flags.DEFINE_integer('mysterious-n', 64, '')
 # gamma, diversity ratio
 tf.app.flags.DEFINE_float('diversity-ratio', 0.7, '')
 
+# arXiv:1703.10717, 3.4
+# learning rate of the control variable k.
+tf.app.flags.DEFINE_float('k-learning-rate', 0.001, '')
+
 tf.app.flags.DEFINE_integer('summary-row-size', 4, '')
 tf.app.flags.DEFINE_integer('summary-col-size', 4, '')
 
@@ -252,10 +256,10 @@ def build_began():
         initializer=tf.constant_initializer(0.0, dtype=tf.float32),
         dtype=tf.float32)
 
-    # the input batch placeholder (real data) for the discriminator.
+    # the input batch (real data) for the discriminator.
     real = build_dataset_reader()
 
-    # the input batch placeholder for the generator.
+    # the input batch (uniform z) for the generator.
     seed = tf.random_uniform(
         shape=[FLAGS.batch_size, FLAGS.seed_size], minval=-1.0, maxval=1.0)
 
@@ -263,24 +267,25 @@ def build_began():
     fake = build_generator(seed)
 
     # build the discriminator to judge the real data.
-    discriminate_real = build_discriminator(real, False)
+    ae_output_real = build_discriminator(real, False)
 
     # build the discriminator to judge the fake data.
     # judge both real and fake data with the same network (shared).
-    discriminate_fake = build_discriminator(fake, True)
+    ae_output_fake = build_discriminator(fake, True)
 
-    lx = autoencoder_loss(real, discriminate_real)
-    lg = autoencoder_loss(fake, discriminate_fake)
+    ae_loss_real = autoencoder_loss(real, ae_output_real)
+    ae_loss_fake = autoencoder_loss(fake, ae_output_fake)
 
-    discriminator_loss = lx - k * lg
+    discriminator_loss = ae_loss_real - k * ae_loss_fake
 
-    generator_loss = lg
+    generator_loss = ae_loss_fake
 
-    q = k + 0.001 * (FLAGS.diversity_ratio * lx - lg)
-
-    q = tf.clip_by_value(q, 0.0, 1.0)
-
-    update_k = k.assign(q)
+    # arXiv:1703.10717, 3.4
+    # update control variable k
+    next_k = k + FLAGS.k_learning_rate * (
+        FLAGS.diversity_ratio * ae_loss_real - ae_loss_fake)
+    next_k = tf.clip_by_value(next_k, 0.0, 1.0)
+    next_k = k.assign(next_k)
 
     #
     d_variables = []
@@ -311,15 +316,16 @@ def build_began():
         'global_step': global_step,
         'seed': seed,
         'real': real,
-        'generator_fake': fake,
+        'fake': fake,
+        'next_k': next_k,
+        'ae_output_real': ae_output_real,
+        'ae_output_fake': ae_output_fake,
+        'ae_loss_real': ae_loss_real,
+        'ae_loss_fake': ae_loss_fake,
         'generator_loss': generator_loss,
         'generator_trainer': generator_trainer,
         'discriminator_loss': discriminator_loss,
         'discriminator_trainer': discriminator_trainer,
-        'update_k': update_k,
-        'loss_real': lx,
-        'loss_fake': lg,
-        'discriminate_real': discriminate_real,
     }
 
 
@@ -336,7 +342,7 @@ def build_summaries(gan):
     image_size = FLAGS.image_size
 
     fake_grid = tf.reshape(
-        gan['generator_fake'], [1, batch_size * image_size, image_size, 3])
+        gan['fake'], [1, batch_size * image_size, image_size, 3])
     fake_grid = tf.split(fake_grid, 4, axis=1)
     fake_grid = tf.concat(fake_grid, axis=2)
     fake_grid = tf.saturate_cast(fake_grid * 127.5 + 127.5, tf.uint8)
@@ -345,7 +351,7 @@ def build_summaries(gan):
         'generated image', fake_grid, max_outputs=4)
 
     temp_grid = tf.reshape(
-        gan['discriminate_real'], [1, batch_size * image_size, image_size, 3])
+        gan['ae_output_real'], [1, batch_size * image_size, image_size, 3])
     temp_grid = tf.split(temp_grid, 4, axis=1)
     temp_grid = tf.concat(temp_grid, axis=2)
     temp_grid = tf.saturate_cast(temp_grid * 127.5 + 127.5, tf.uint8)
@@ -392,16 +398,12 @@ def train():
             global_step=global_step)
 
         while True:
-            # for _ in range(5):
-                # real_sources = next_real_batch(reader)
-                # fake_sources = next_fake_batch()
-
             fetches = [
                 gan_graph['discriminator_loss'],
                 gan_graph['discriminator_trainer'],
                 summaries['discriminator_loss_summary'],
-                gan_graph['update_k'],
-                gan_graph['loss_real'],
+                gan_graph['next_k'],
+                gan_graph['ae_loss_real'],
             ]
 
             feeds = {}
@@ -413,15 +415,12 @@ def train():
 
             d_loss_summary = returns[2]
 
-            loss_real = returns[4]
+            ae_loss_real = returns[4]
 
             reporter.add_summary(d_loss_summary, global_step)
 
             if global_step % 500 == 0:
                 reporter.add_summary(returns[5], global_step)
-
-            #
-            # fake_sources = next_fake_batch()
 
             log_fakes = (global_step % 500 == 0)
 
@@ -430,7 +429,7 @@ def train():
                 gan_graph['generator_loss'],
                 gan_graph['generator_trainer'],
                 summaries['generator_loss_summary'],
-                gan_graph['loss_fake'],
+                gan_graph['ae_loss_fake'],
             ]
 
             feeds = {}
@@ -449,9 +448,10 @@ def train():
                 reporter.add_summary(returns[5], global_step)
 
             if global_step % 100 == 0:
-                loss_fake = returns[4]
+                ae_loss_fake = returns[4]
 
-                mg = loss_real + np.abs(FLAGS.diversity_ratio * loss_real - loss_fake)
+                mg = ae_loss_real + np.abs(
+                    FLAGS.diversity_ratio * ae_loss_real - ae_loss_fake)
 
                 print('[{}]: {}, {}'.format(global_step, returns[1], mg))
 
