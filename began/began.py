@@ -1,6 +1,5 @@
 """
 """
-import os
 import tensorflow as tf
 
 from six.moves import range
@@ -277,14 +276,16 @@ def build_embed_network(seed, real):
 
     ae_output_fake = build_discriminator(fake, False)
 
-    loss = tf.nn.l2_loss(fake - real)
+    loss = tf.reduce_mean((fake - real) ** 2)
 
-    trainer = \
-        tf.train.AdamOptimizer(learning_rate=0.005).minimize(loss)
+    trainer = tf.train.AdamOptimizer(learning_rate=0.0005)
+    trainer = trainer.minimize(loss, var_list=[seed])
 
     return {
-        'loss': loss,
+        'real': real,
         'fake': fake,
+        'loss': loss,
+        'seed': seed,
         'ae_output_fake': ae_output_fake,
         'trainer': trainer,
     }
