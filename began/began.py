@@ -289,3 +289,17 @@ def build_embed_network(seed, real):
         'ae_output_fake': ae_output_fake,
         'trainer': trainer,
     }
+
+
+def build_generating_network(seed):
+    """
+    """
+    fake = build_generator(seed)
+
+    ae_output_fake = build_discriminator(fake, False)
+
+    return {
+        'fake': fake,
+        'seed': seed,
+        'ae_output_fake': ae_output_fake,
+    }

@@ -1,6 +1,7 @@
 """
 """
 import began
+import numpy as np
 import tensorflow as tf
 
 from six.moves import range
@@ -113,6 +114,8 @@ def embed():
 
             if step % 500:
                 print('[{}]: {}'.format(step, returns[0]))
+
+                np.savez(FLAGS.result_embed_path, v=returns[1][0])
 
 
 def main(_):
