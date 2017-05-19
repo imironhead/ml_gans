@@ -276,7 +276,7 @@ def build_embed_network(seed, real):
 
     ae_output_fake = build_discriminator(fake, False)
 
-    loss = tf.reduce_mean((fake - real) ** 2)
+    loss = tf.reduce_mean(tf.abs(fake - real))
 
     trainer = tf.train.AdamOptimizer(learning_rate=0.0005)
     trainer = trainer.minimize(loss, var_list=[seed])
