@@ -5,15 +5,7 @@ import tensorflow as tf
 from six.moves import range
 
 
-# arXiv:1703.10717
-# we typically used a batch size of n = 16.
-tf.app.flags.DEFINE_integer('batch-size', 16, '')
-
-tf.app.flags.DEFINE_integer('image-size', 64, '')
-
-tf.app.flags.DEFINE_boolean('need-crop-image', False, '')
-tf.app.flags.DEFINE_integer('image-offset-x', 25, '')
-tf.app.flags.DEFINE_integer('image-offset-y', 50, '')
+tf.app.flags.DEFINE_integer('image-size', 128, '')
 
 # arXiv:1703.10717v2
 # 4.1
@@ -23,7 +15,7 @@ tf.app.flags.DEFINE_integer('embedding-size', 64, '')
 
 # arXiv:1703.10717
 # the mysterious n in Figure 1.
-tf.app.flags.DEFINE_integer('mysterious-n', 64, '')
+tf.app.flags.DEFINE_integer('mysterious-n', 128, '')
 
 # arXiv:1703.10717
 # gamma, diversity ratio
@@ -32,9 +24,6 @@ tf.app.flags.DEFINE_float('diversity-ratio', 0.7, '')
 # arXiv:1703.10717, 3.4
 # learning rate of the control variable k.
 tf.app.flags.DEFINE_float('k-learning-rate', 0.001, '')
-
-tf.app.flags.DEFINE_integer('summary-row-size', 4, '')
-tf.app.flags.DEFINE_integer('summary-col-size', 4, '')
 
 FLAGS = tf.app.flags.FLAGS
 
@@ -179,6 +168,21 @@ def autoencoder_loss(upstream, downstream):
     return tf.reduce_mean(tf.abs(upstream - downstream))
 
 
+def collect_variables():
+    """
+    """
+    d_variables = []
+    g_variables = []
+
+    for variable in tf.trainable_variables():
+        if variable.name.startswith('d_'):
+            d_variables.append(variable)
+        elif variable.name.startswith('g_'):
+            g_variables.append(variable)
+
+    return g_variables, d_variables
+
+
 def build_began(seed, real):
     """
     """
@@ -227,14 +231,7 @@ def build_began(seed, real):
     convergence_measure = ae_loss_real + tf.abs(ae_loss_diff)
 
     #
-    d_variables = []
-    g_variables = []
-
-    for variable in tf.trainable_variables():
-        if variable.name.startswith('d_'):
-            d_variables.append(variable)
-        elif variable.name.startswith('g_'):
-            g_variables.append(variable)
+    g_variables, d_variables = collect_variables()
 
     generator_trainer = tf.train.AdamOptimizer(
         learning_rate=0.00005, beta1=0.0001)
@@ -263,8 +260,10 @@ def build_began(seed, real):
         'ae_loss_fake': ae_loss_fake,
         'generator_loss': generator_loss,
         'generator_trainer': generator_trainer,
+        'generator_variables': g_variables,
         'discriminator_loss': discriminator_loss,
         'discriminator_trainer': discriminator_trainer,
+        'discriminator_variables': d_variables,
         'convergence_measure': convergence_measure,
     }
 
@@ -281,6 +280,8 @@ def build_embed_network(seed, real):
     trainer = tf.train.AdamOptimizer(learning_rate=0.0005)
     trainer = trainer.minimize(loss, var_list=[seed])
 
+    g_variables, d_variables = collect_variables()
+
     return {
         'real': real,
         'fake': fake,
@@ -288,6 +289,8 @@ def build_embed_network(seed, real):
         'seed': seed,
         'ae_output_fake': ae_output_fake,
         'trainer': trainer,
+        'generator_variables': g_variables,
+        'discriminator_variables': d_variables,
     }
 
 
@@ -298,8 +301,12 @@ def build_generating_network(seed):
 
     ae_output_fake = build_discriminator(fake, False)
 
+    g_variables, d_variables = collect_variables()
+
     return {
         'fake': fake,
         'seed': seed,
         'ae_output_fake': ae_output_fake,
+        'generator_variables': g_variables,
+        'discriminator_variables': d_variables,
     }

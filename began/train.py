@@ -15,21 +15,6 @@ def sanity_check():
     if not os.path.isdir(FLAGS.portraits_dir_path):
         raise Exception('invalid portraits directory')
 
-    run_name = '{}_{}_{}_{}'.format(
-        FLAGS.seed_size, FLAGS.embedding_size, FLAGS.image_size,
-        FLAGS.mysterious_n)
-
-    FLAGS.logs_dir_path = \
-        os.path.join(FLAGS.logs_dir_path, run_name)
-    FLAGS.checkpoints_dir_path = \
-        os.path.join(FLAGS.checkpoints_dir_path, run_name)
-
-    if not os.path.isdir(FLAGS.logs_dir_path):
-        os.makedirs(FLAGS.logs_dir_path)
-
-    if not os.path.isdir(FLAGS.checkpoints_dir_path):
-        os.makedirs(FLAGS.checkpoints_dir_path)
-
 
 def build_dataset_reader():
     """
@@ -137,9 +122,6 @@ def train():
     reporter = tf.summary.FileWriter(FLAGS.logs_dir_path)
 
     with tf.Session() as session:
-        coord = tf.train.Coordinator()
-        threads = tf.train.start_queue_runners(coord=coord)
-
         if checkpoint_source_path is None:
             session.run(tf.global_variables_initializer())
         else:
@@ -151,6 +133,10 @@ def train():
         reporter.add_session_log(
             tf.SessionLog(status=tf.SessionLog.START),
             global_step=global_step)
+
+        # make dataset reader work
+        coord = tf.train.Coordinator()
+        threads = tf.train.start_queue_runners(coord=coord)
 
         while True:
             # discriminator
@@ -213,5 +199,16 @@ if __name__ == '__main__':
     tf.app.flags.DEFINE_string('portraits-dir-path', '', '')
     tf.app.flags.DEFINE_string('logs-dir-path', '', '')
     tf.app.flags.DEFINE_string('checkpoints-dir-path', '', '')
+
+    tf.app.flags.DEFINE_boolean('need-crop-image', False, '')
+    tf.app.flags.DEFINE_integer('image-offset-x', 25, '')
+    tf.app.flags.DEFINE_integer('image-offset-y', 50, '')
+
+    tf.app.flags.DEFINE_integer('summary-row-size', 4, '')
+    tf.app.flags.DEFINE_integer('summary-col-size', 4, '')
+
+    # arXiv:1703.10717
+    # we typically used a batch size of n = 16.
+    tf.app.flags.DEFINE_integer('batch-size', 16, '')
 
     tf.app.run()
