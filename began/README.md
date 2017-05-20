@@ -12,9 +12,9 @@
 
 ## Train
 
-{% highlight pthon %}
+``` python
 python -m began.train
-{% endhighlight %}
+```
 
 ### commands:
 
@@ -42,17 +42,17 @@ Facebook asked me to tag him  XD
 
 ## Embed
 
-{% highlight pthon %}
+``` python
 python -m began.embed
-{% endhighlight %}
+```
 
 TBD
 
 ## Shift
 
-{% highlight pthon %}
+``` python
 python -m began.shift
-{% endhighlight %}
+```
 
 ### commands:
 
@@ -84,9 +84,9 @@ Generated with 64 random vectors:
 
 To crop celebA dataset (png, [25, 50, 128, 128]).
 
-{% highlight pthon %}
+``` python
 python -m began.cropper
-{% endhighlight %}
+```
 
 ### commands
 
