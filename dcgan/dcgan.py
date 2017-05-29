@@ -7,16 +7,38 @@ import tensorflow as tf
 
 from six.moves import range
 
-
+# experimented workable learning rate:
+# LSUN bedroom: 0.00002
+# MNIST: 0.0002
+tf.app.flags.DEFINE_float(
+    'learning-rate',
+    0.00002,
+    'learning rate for adam optimizer. 0.00002 is good for LSUN while 0.0002'
+    ' is good for MNIST')
 tf.app.flags.DEFINE_string(
-    'logs-dir-path', './dcgan/logs/', '')
+    'logs-dir-path',
+    './dcgan/logs/',
+    'path to the directory for storing logs')
 tf.app.flags.DEFINE_string(
-    'checkpoints-dir-path', './dcgan/checkpoints/', '')
-tf.app.flags.DEFINE_boolean('use-lsun', False, '')
-tf.app.flags.DEFINE_integer('batch-size', 64, '')
-tf.app.flags.DEFINE_integer('seed-size', 128, '')
-tf.app.flags.DEFINE_integer('summary-row-size', 8, '')
-tf.app.flags.DEFINE_integer('summary-col-size', 8, '')
+    'checkpoints-dir-path',
+    './dcgan/ckpts/',
+    'path to the directory for storing checkpoints')
+tf.app.flags.DEFINE_boolean(
+    'use-lsun',
+    False,
+    'use LSUN bedroom dataset instead of MNIST')
+tf.app.flags.DEFINE_integer(
+    'batch-size',
+    64,
+    'batch size for training')
+tf.app.flags.DEFINE_integer(
+    'seed-size',
+    128,
+    'size of the z for the generator')
+tf.app.flags.DEFINE_integer(
+    'summary-col-size',
+    8,
+    'number of columns to summary generated images')
 
 FLAGS = tf.app.flags.FLAGS
 
@@ -32,23 +54,22 @@ def sanity_check():
         raise Exception(
             'bad checkpoints dir path: {}'.format(FLAGS.checkpoints_dir_path))
 
+    if FLAGS.learning_rate == 0.0:
+        raise Exception('learning rate should not be zero :)')
+
     if FLAGS.batch_size < 1:
         raise Exception('bad batch size: {}'.format(FLAGS.batch_size))
 
     if FLAGS.seed_size < 1:
         raise Exception('bad seed size: {}'.format(FLAGS.seed_size))
 
-    if FLAGS.summary_row_size < 1:
-        raise Exception(
-            'bad summary row size: {}'.format(FLAGS.summary_row_size))
-
     if FLAGS.summary_col_size < 1:
         raise Exception(
             'bad summary col size: {}'.format(FLAGS.summary_col_size))
 
-    if FLAGS.summary_col_size * FLAGS.summary_row_size != FLAGS.batch_size:
-        message = '{} x {} != {}'.format(
-            FLAGS.summary_col_size, FLAGS.summary_row_size, FLAGS.batch_size)
+    if FLAGS.batch_size % FLAGS.summary_col_size != 0:
+        message = '{} % {} != 0'.format(
+            FLAGS.batch_size, FLAGS.summary_col_size)
 
         raise Exception('bad summary size: {}'.format(message))
 
@@ -213,19 +234,13 @@ def build_dcgan():
     generator_loss = -tf.reduce_mean(tf.log(generator_temp))
 
     #
-    d_variables = []
-    g_variables = []
+    t_vars = tf.trainable_variables()
 
-    for variable in tf.trainable_variables():
-        if variable.name.startswith('d_'):
-            d_variables.append(variable)
-        elif variable.name.startswith('g_'):
-            g_variables.append(variable)
-
-    learning_rate = 0.00002 if FLAGS.use_lsun else 0.0002
+    d_variables = [v for v in t_vars if v.name.startswith('d_')]
+    g_variables = [v for v in t_vars if v.name.startswith('g_')]
 
     generator_trainer = tf.train.AdamOptimizer(
-        learning_rate=learning_rate, beta1=0.5)
+        learning_rate=FLAGS.learning_rate, beta1=0.5)
     generator_trainer = generator_trainer.minimize(
         generator_loss,
         global_step=global_step,
@@ -233,11 +248,18 @@ def build_dcgan():
         colocate_gradients_with_ops=False)
 
     discriminator_trainer = tf.train.AdamOptimizer(
-        learning_rate=learning_rate, beta1=0.5)
+        learning_rate=FLAGS.learning_rate, beta1=0.5)
     discriminator_trainer = discriminator_trainer.minimize(
         discriminator_loss,
         var_list=d_variables,
         colocate_gradients_with_ops=False)
+
+    # variables and gradients
+    g_variables_gradients = \
+        zip(g_variables, tf.gradients(generator_loss, g_variables))
+
+    d_variables_gradients = \
+        zip(d_variables, tf.gradients(discriminator_loss, d_variables))
 
     return {
         'global_step': global_step,
@@ -246,22 +268,41 @@ def build_dcgan():
         'generator_fake': fake,
         'generator_loss': generator_loss,
         'generator_trainer': generator_trainer,
+        'generator_variables_gradients': g_variables_gradients,
         'discriminator_loss': discriminator_loss,
         'discriminator_trainer': discriminator_trainer,
+        'discriminator_variables_gradients': d_variables_gradients,
     }
 
 
 def build_summaries(gan):
     """
     """
-    generator_loss_summary = tf.summary.scalar(
-        'generator loss', gan['generator_loss'])
+    g_summaries = []
+    d_summaries = []
 
-    discriminator_loss_summary = tf.summary.scalar(
-        'discriminator loss', gan['discriminator_loss'])
+    g_summaries.append(
+        tf.summary.scalar('generator loss', gan['generator_loss']))
 
-    image_width = 64 if FLAGS.use_lsun else 32
-    image_depth = 3 if FLAGS.use_lsun else 1
+    d_summaries.append(
+        tf.summary.scalar('discriminator loss', gan['discriminator_loss']))
+
+    for vg in gan['generator_variables_gradients']:
+        variable_name = '{}/variable'.format(vg[0].name)
+        gradient_name = '{}/gradient'.format(vg[0].name)
+
+        g_summaries.append(tf.summary.histogram(variable_name, vg[0]))
+        g_summaries.append(tf.summary.histogram(gradient_name, vg[1]))
+
+    for vg in gan['discriminator_variables_gradients']:
+        variable_name = '{}/variable'.format(vg[0].name)
+        gradient_name = '{}/gradient'.format(vg[0].name)
+
+        d_summaries.append(tf.summary.histogram(variable_name, vg[0]))
+        d_summaries.append(tf.summary.histogram(gradient_name, vg[1]))
+
+    # fake image
+    image_width, image_depth = (64, 3) if FLAGS.use_lsun else (32, 1)
 
     fake_grid = tf.reshape(
         gan['generator_fake'],
@@ -270,13 +311,15 @@ def build_summaries(gan):
     fake_grid = tf.concat(fake_grid, axis=2)
     fake_grid = tf.saturate_cast(fake_grid * 127.5 + 127.5, tf.uint8)
 
-    generator_fake_summary = tf.summary.image(
+    summary_generator_fake = tf.summary.image(
         'generated image', fake_grid, max_outputs=1)
 
+    g_summaries_plus = g_summaries + [summary_generator_fake]
+
     return {
-        'generator_fake_summary': generator_fake_summary,
-        'generator_loss_summary': generator_loss_summary,
-        'discriminator_loss_summary': discriminator_loss_summary,
+        'summary_generator': tf.summary.merge(g_summaries),
+        'summary_generator_plus': tf.summary.merge(g_summaries_plus),
+        'summary_discriminator': tf.summary.merge(d_summaries),
     }
 
 
@@ -359,50 +402,43 @@ def train():
             real_sources = next_real_batch(reader)
             fake_sources = next_fake_batch()
 
-            fetches = [
-                gan_graph['discriminator_loss'],
-                gan_graph['discriminator_trainer'],
-                summaries['discriminator_loss_summary']
-            ]
+            fetches = {
+                'discriminator_loss': gan_graph['discriminator_loss'],
+                'discriminator_trainer': gan_graph['discriminator_trainer'],
+                'summary': summaries['summary_discriminator']
+            }
 
             feeds = {
                 gan_graph['seed']: fake_sources,
                 gan_graph['real']: real_sources,
             }
 
-            returns = session.run(fetches, feed_dict=feeds)
+            fetched = session.run(fetches, feed_dict=feeds)
 
-            d_loss_summary = returns[2]
-
-            reporter.add_summary(d_loss_summary, global_step)
+            reporter.add_summary(fetched['summary'], global_step)
 
             #
-            log_fakes = (global_step % 500 == 0)
-
-            fetches = [
-                gan_graph['global_step'],
-                gan_graph['generator_loss'],
-                gan_graph['generator_trainer'],
-                summaries['generator_loss_summary'],
-            ]
+            fetches = {
+                'global_step': gan_graph['global_step'],
+                'generator_loss': gan_graph['generator_loss'],
+                'generator_trainer': gan_graph['generator_trainer'],
+            }
 
             feeds = {gan_graph['seed']: fake_sources}
 
-            if log_fakes:
-                fetches.append(summaries['generator_fake_summary'])
+            if global_step % 500 == 0:
+                fetches['summary'] = summaries['summary_generator_plus']
+            else:
+                fetches['summary'] = summaries['summary_generator']
 
-            returns = session.run(fetches, feed_dict=feeds)
+            fetched = session.run(fetches, feed_dict=feeds)
 
-            global_step = returns[0]
-            g_loss_summary = returns[3]
+            global_step = fetched['global_step']
 
-            reporter.add_summary(g_loss_summary, global_step)
-
-            if log_fakes:
-                reporter.add_summary(returns[4], global_step)
+            reporter.add_summary(fetched['summary'], global_step)
 
             if global_step % 100 == 0:
-                print('[{}]: {}'.format(global_step, returns[1]))
+                print('[{}]'.format(global_step))
 
             if global_step % 500 == 0:
                 tf.train.Saver().save(
