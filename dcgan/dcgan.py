@@ -7,16 +7,38 @@ import tensorflow as tf
 
 from six.moves import range
 
-
+# experimented workable learning rate:
+# LSUN bedroom: 0.00002
+# MNIST: 0.0002
+tf.app.flags.DEFINE_float(
+    'learning-rate',
+    0.00002,
+    'learning rate for adam optimizer. 0.00002 is good for LSUN while 0.0002'
+    ' is good for MNIST')
 tf.app.flags.DEFINE_string(
-    'logs-dir-path', './dcgan/logs/', '')
+    'logs-dir-path',
+    './dcgan/logs/',
+    'path to the directory for storing logs')
 tf.app.flags.DEFINE_string(
-    'checkpoints-dir-path', './dcgan/checkpoints/', '')
-tf.app.flags.DEFINE_boolean('use-lsun', False, '')
-tf.app.flags.DEFINE_integer('batch-size', 64, '')
-tf.app.flags.DEFINE_integer('seed-size', 128, '')
-tf.app.flags.DEFINE_integer('summary-row-size', 8, '')
-tf.app.flags.DEFINE_integer('summary-col-size', 8, '')
+    'checkpoints-dir-path',
+    './dcgan/ckpts/',
+    'path to the directory for storing checkpoints')
+tf.app.flags.DEFINE_boolean(
+    'use-lsun',
+    False,
+    'use LSUN bedroom dataset instead of MNIST')
+tf.app.flags.DEFINE_integer(
+    'batch-size',
+    64,
+    'batch size for training')
+tf.app.flags.DEFINE_integer(
+    'seed-size',
+    128,
+    'size of the z for the generator')
+tf.app.flags.DEFINE_integer(
+    'summary-col-size',
+    8,
+    'number of columns to summary generated images')
 
 FLAGS = tf.app.flags.FLAGS
 
@@ -32,23 +54,22 @@ def sanity_check():
         raise Exception(
             'bad checkpoints dir path: {}'.format(FLAGS.checkpoints_dir_path))
 
+    if FLAGS.learning_rate == 0.0:
+        raise Exception('learning rate should not be zero :)')
+
     if FLAGS.batch_size < 1:
         raise Exception('bad batch size: {}'.format(FLAGS.batch_size))
 
     if FLAGS.seed_size < 1:
         raise Exception('bad seed size: {}'.format(FLAGS.seed_size))
 
-    if FLAGS.summary_row_size < 1:
-        raise Exception(
-            'bad summary row size: {}'.format(FLAGS.summary_row_size))
-
     if FLAGS.summary_col_size < 1:
         raise Exception(
             'bad summary col size: {}'.format(FLAGS.summary_col_size))
 
-    if FLAGS.summary_col_size * FLAGS.summary_row_size != FLAGS.batch_size:
-        message = '{} x {} != {}'.format(
-            FLAGS.summary_col_size, FLAGS.summary_row_size, FLAGS.batch_size)
+    if FLAGS.batch_size % FLAGS.summary_col_size != 0:
+        message = '{} % {} != 0'.format(
+            FLAGS.batch_size, FLAGS.summary_col_size)
 
         raise Exception('bad summary size: {}'.format(message))
 
@@ -222,10 +243,8 @@ def build_dcgan():
         elif variable.name.startswith('g_'):
             g_variables.append(variable)
 
-    learning_rate = 0.00002 if FLAGS.use_lsun else 0.0002
-
     generator_trainer = tf.train.AdamOptimizer(
-        learning_rate=learning_rate, beta1=0.5)
+        learning_rate=FLAGS.learning_rate, beta1=0.5)
     generator_trainer = generator_trainer.minimize(
         generator_loss,
         global_step=global_step,
@@ -233,7 +252,7 @@ def build_dcgan():
         colocate_gradients_with_ops=False)
 
     discriminator_trainer = tf.train.AdamOptimizer(
-        learning_rate=learning_rate, beta1=0.5)
+        learning_rate=FLAGS.learning_rate, beta1=0.5)
     discriminator_trainer = discriminator_trainer.minimize(
         discriminator_loss,
         var_list=d_variables,
