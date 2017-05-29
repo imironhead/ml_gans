@@ -234,14 +234,10 @@ def build_dcgan():
     generator_loss = -tf.reduce_mean(tf.log(generator_temp))
 
     #
-    d_variables = []
-    g_variables = []
+    t_vars = tf.trainable_variables()
 
-    for variable in tf.trainable_variables():
-        if variable.name.startswith('d_'):
-            d_variables.append(variable)
-        elif variable.name.startswith('g_'):
-            g_variables.append(variable)
+    d_variables = [v for v in t_vars if v.name.startswith('d_')]
+    g_variables = [v for v in t_vars if v.name.startswith('g_')]
 
     generator_trainer = tf.train.AdamOptimizer(
         learning_rate=FLAGS.learning_rate, beta1=0.5)
