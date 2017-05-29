@@ -239,6 +239,13 @@ def build_dcgan():
         var_list=d_variables,
         colocate_gradients_with_ops=False)
 
+    # variables and gradients
+    g_variables_gradients = \
+        zip(g_variables, tf.gradients(generator_loss, g_variables))
+
+    d_variables_gradients = \
+        zip(d_variables, tf.gradients(discriminator_loss, d_variables))
+
     return {
         'global_step': global_step,
         'seed': seed,
@@ -246,22 +253,41 @@ def build_dcgan():
         'generator_fake': fake,
         'generator_loss': generator_loss,
         'generator_trainer': generator_trainer,
+        'generator_variables_gradients': g_variables_gradients,
         'discriminator_loss': discriminator_loss,
         'discriminator_trainer': discriminator_trainer,
+        'discriminator_variables_gradients': d_variables_gradients,
     }
 
 
 def build_summaries(gan):
     """
     """
-    generator_loss_summary = tf.summary.scalar(
-        'generator loss', gan['generator_loss'])
+    g_summaries = []
+    d_summaries = []
 
-    discriminator_loss_summary = tf.summary.scalar(
-        'discriminator loss', gan['discriminator_loss'])
+    g_summaries.append(
+        tf.summary.scalar('generator loss', gan['generator_loss']))
 
-    image_width = 64 if FLAGS.use_lsun else 32
-    image_depth = 3 if FLAGS.use_lsun else 1
+    d_summaries.append(
+        tf.summary.scalar('discriminator loss', gan['discriminator_loss']))
+
+    for vg in gan['generator_variables_gradients']:
+        variable_name = '{}/variable'.format(vg[0].name)
+        gradient_name = '{}/gradient'.format(vg[0].name)
+
+        g_summaries.append(tf.summary.histogram(variable_name, vg[0]))
+        g_summaries.append(tf.summary.histogram(gradient_name, vg[1]))
+
+    for vg in gan['discriminator_variables_gradients']:
+        variable_name = '{}/variable'.format(vg[0].name)
+        gradient_name = '{}/gradient'.format(vg[0].name)
+
+        d_summaries.append(tf.summary.histogram(variable_name, vg[0]))
+        d_summaries.append(tf.summary.histogram(gradient_name, vg[1]))
+
+    # fake image
+    image_width, image_depth = (64, 3) if FLAGS.use_lsun else (32, 1)
 
     fake_grid = tf.reshape(
         gan['generator_fake'],
@@ -270,13 +296,15 @@ def build_summaries(gan):
     fake_grid = tf.concat(fake_grid, axis=2)
     fake_grid = tf.saturate_cast(fake_grid * 127.5 + 127.5, tf.uint8)
 
-    generator_fake_summary = tf.summary.image(
+    summary_generator_fake = tf.summary.image(
         'generated image', fake_grid, max_outputs=1)
 
+    g_summaries_plus = g_summaries + [summary_generator_fake]
+
     return {
-        'generator_fake_summary': generator_fake_summary,
-        'generator_loss_summary': generator_loss_summary,
-        'discriminator_loss_summary': discriminator_loss_summary,
+        'summary_generator': tf.summary.merge(g_summaries),
+        'summary_generator_plus': tf.summary.merge(g_summaries_plus),
+        'summary_discriminator': tf.summary.merge(d_summaries),
     }
 
 
@@ -359,50 +387,43 @@ def train():
             real_sources = next_real_batch(reader)
             fake_sources = next_fake_batch()
 
-            fetches = [
-                gan_graph['discriminator_loss'],
-                gan_graph['discriminator_trainer'],
-                summaries['discriminator_loss_summary']
-            ]
+            fetches = {
+                'discriminator_loss': gan_graph['discriminator_loss'],
+                'discriminator_trainer': gan_graph['discriminator_trainer'],
+                'summary': summaries['summary_discriminator']
+            }
 
             feeds = {
                 gan_graph['seed']: fake_sources,
                 gan_graph['real']: real_sources,
             }
 
-            returns = session.run(fetches, feed_dict=feeds)
+            fetched = session.run(fetches, feed_dict=feeds)
 
-            d_loss_summary = returns[2]
-
-            reporter.add_summary(d_loss_summary, global_step)
+            reporter.add_summary(fetched['summary'], global_step)
 
             #
-            log_fakes = (global_step % 500 == 0)
-
-            fetches = [
-                gan_graph['global_step'],
-                gan_graph['generator_loss'],
-                gan_graph['generator_trainer'],
-                summaries['generator_loss_summary'],
-            ]
+            fetches = {
+                'global_step': gan_graph['global_step'],
+                'generator_loss': gan_graph['generator_loss'],
+                'generator_trainer': gan_graph['generator_trainer'],
+            }
 
             feeds = {gan_graph['seed']: fake_sources}
 
-            if log_fakes:
-                fetches.append(summaries['generator_fake_summary'])
+            if global_step % 500 == 0:
+                fetches['summary'] = summaries['summary_generator_plus']
+            else:
+                fetches['summary'] = summaries['summary_generator']
 
-            returns = session.run(fetches, feed_dict=feeds)
+            fetched = session.run(fetches, feed_dict=feeds)
 
-            global_step = returns[0]
-            g_loss_summary = returns[3]
+            global_step = fetched['global_step']
 
-            reporter.add_summary(g_loss_summary, global_step)
-
-            if log_fakes:
-                reporter.add_summary(returns[4], global_step)
+            reporter.add_summary(fetched['summary'], global_step)
 
             if global_step % 100 == 0:
-                print('[{}]: {}'.format(global_step, returns[1]))
+                print('[{}]'.format(global_step))
 
             if global_step % 500 == 0:
                 tf.train.Saver().save(
