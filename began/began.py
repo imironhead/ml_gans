@@ -222,8 +222,8 @@ def build_began(seed, real):
     # update control variable k
     ae_loss_diff = FLAGS.diversity_ratio * ae_loss_real - ae_loss_fake
 
-    next_k = k + FLAGS.k_learning_rate * ae_loss_diff
-    next_k = tf.clip_by_value(next_k, 0.0, 1.0)
+    next_k = \
+        tf.clip_by_value(k, 0.0, 1.0) + FLAGS.k_learning_rate * ae_loss_diff
     next_k = k.assign(next_k)
 
     # arXiv:1703.10717, 3.4.1
@@ -231,10 +231,19 @@ def build_began(seed, real):
     convergence_measure = ae_loss_real + tf.abs(ae_loss_diff)
 
     #
+    learning_rate = tf.get_variable(
+        'learning_rate',
+        [],
+        trainable=False,
+        initializer=tf.constant_initializer(0.00005, dtype=tf.float32),
+        dtype=tf.float32)
+
+    decay_learning_rate = learning_rate.assign(0.5 * learning_rate)
+
     g_variables, d_variables = collect_variables()
 
     generator_trainer = tf.train.AdamOptimizer(
-        learning_rate=0.00005, beta1=0.0001)
+        learning_rate=learning_rate, beta1=0.0001)
     generator_trainer = generator_trainer.minimize(
         generator_loss,
         global_step=global_step,
@@ -242,7 +251,7 @@ def build_began(seed, real):
         colocate_gradients_with_ops=True)
 
     discriminator_trainer = tf.train.AdamOptimizer(
-        learning_rate=0.00005, beta1=0.0001)
+        learning_rate=learning_rate, beta1=0.0001)
     discriminator_trainer = discriminator_trainer.minimize(
         discriminator_loss,
         var_list=d_variables,
@@ -265,6 +274,8 @@ def build_began(seed, real):
         'discriminator_trainer': discriminator_trainer,
         'discriminator_variables': d_variables,
         'convergence_measure': convergence_measure,
+        'learning_rate': learning_rate,
+        'decay_learning_rate': decay_learning_rate,
     }
 
 
