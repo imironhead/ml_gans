@@ -33,15 +33,20 @@ def build_dataset_reader():
 
     # assume the size of input images are either 128x128x3 or 64x64x3.
 
-    if FLAGS.need_crop_image:
+    if FLAGS.crop_image:
         image = tf.image.crop_to_bounding_box(
             image,
-            FLAGS.image_offset_y,
-            FLAGS.image_offset_x,
-            FLAGS.image_size,
-            FLAGS.image_size)
+            FLAGS.crop_image_offset_y,
+            FLAGS.crop_image_offset_x,
+            FLAGS.crop_image_size_m,
+            FLAGS.crop_image_size_m)
+
+        image = tf.random_crop(
+            image, size=[FLAGS.crop_image_size_n, FLAGS.crop_image_size_n, 3])
 
     image = tf.image.resize_images(image, [FLAGS.image_size, FLAGS.image_size])
+
+    image = tf.image.random_flip_left_right(image)
 
     image = tf.cast(image, dtype=tf.float32) / 127.5 - 1.0
 
@@ -72,30 +77,38 @@ def build_summaries(gan):
     """
     summaries = {}
 
-    # build scalar summaries
+    # build generator summary
+    summaries['generator'] = \
+        tf.summary.scalar('generator loss', gan['generator_loss'])
+
+    # build discriminator summaries
+    d_summaries = []
+
     scalar_table = [
-        ('summary_convergence_measure', 'convergence_measure',
-         'convergence measure'),
-        ('summary_generator_loss', 'generator_loss', 'generator loss'),
-        ('summary_discriminator_loss', 'discriminator_loss',
-         'discriminator loss'),
+        ('convergence_measure', 'convergence measure'),
+        ('discriminator_loss', 'discriminator loss'),
+        ('learning_rate', 'learning rate'),
     ]
 
     for scalar in scalar_table:
-        summaries[scalar[0]] = tf.summary.scalar(scalar[2], gan[scalar[1]])
+        d_summaries.append(tf.summary.scalar(scalar[1], gan[scalar[0]]))
+
+    summaries['discriminator_part'] = tf.summary.merge(d_summaries)
 
     # build image summaries
     image_table = [
-        ('summary_real', 'real', 'real image'),
-        ('summary_fake', 'fake', 'generated image'),
-        ('summary_ae_real', 'ae_output_real', 'autoencoder real'),
-        ('summary_ae_fake', 'ae_output_fake', 'autoencoder fake')
+        ('real', 'real image'),
+        ('fake', 'generated image'),
+        ('ae_output_real', 'autoencoder real'),
+        ('ae_output_fake', 'autoencoder fake')
     ]
 
     for table in image_table:
-        grid = reshape_batch_images(gan[table[1]])
+        grid = reshape_batch_images(gan[table[0]])
 
-        summaries[table[0]] = tf.summary.image(table[2], grid, max_outputs=4)
+        d_summaries.append(tf.summary.image(table[1], grid, max_outputs=4))
+
+    summaries['discriminator_plus'] = tf.summary.merge(d_summaries)
 
     return summaries
 
@@ -140,36 +153,35 @@ def train():
 
         while True:
             # discriminator
-            fetches = [
-                gan_graph['next_k'],
-                gan_graph['discriminator_trainer'],
-                summaries['summary_convergence_measure'],
-                summaries['summary_discriminator_loss'],
-            ]
+            fetches = {
+                'temp_0': gan_graph['next_k'],
+                'temp_1': gan_graph['discriminator_trainer'],
+            }
 
             if global_step % 500 == 0:
-                fetches.append(summaries['summary_fake'])
-                fetches.append(summaries['summary_real'])
-                fetches.append(summaries['summary_ae_fake'])
-                fetches.append(summaries['summary_ae_real'])
+                fetches['summary'] = summaries['discriminator_plus']
+            else:
+                fetches['summary'] = summaries['discriminator_part']
 
-            returns = session.run(fetches)
+            fetched = session.run(fetches)
 
-            for summary in returns[2:]:
-                reporter.add_summary(summary, global_step)
+            reporter.add_summary(fetched['summary'], global_step)
 
             # generator
-            fetches = [
-                gan_graph['generator_trainer'],
-                gan_graph['global_step'],
-                summaries['summary_generator_loss'],
-            ]
+            fetches = {
+                'global_step': gan_graph['global_step'],
+                'temp_0': gan_graph['generator_trainer'],
+                'summary': summaries['generator'],
+            }
 
-            returns = session.run(fetches)
+            fetched = session.run(fetches)
 
-            global_step = returns[1]
+            global_step = fetched['global_step']
 
-            reporter.add_summary(returns[2], global_step)
+            reporter.add_summary(fetched['summary'], global_step)
+
+            if global_step % 70000 == 0:
+                session.run(gan_graph['decay_learning_rate'])
 
             if global_step % 100 == 0:
                 print('step {}'.format(global_step))
@@ -200,9 +212,11 @@ if __name__ == '__main__':
     tf.app.flags.DEFINE_string('logs-dir-path', '', '')
     tf.app.flags.DEFINE_string('checkpoints-dir-path', '', '')
 
-    tf.app.flags.DEFINE_boolean('need-crop-image', False, '')
-    tf.app.flags.DEFINE_integer('image-offset-x', 25, '')
-    tf.app.flags.DEFINE_integer('image-offset-y', 50, '')
+    tf.app.flags.DEFINE_boolean('crop-image', False, '')
+    tf.app.flags.DEFINE_integer('crop-image-offset-x', 25, '')
+    tf.app.flags.DEFINE_integer('crop-image-offset-y', 50, '')
+    tf.app.flags.DEFINE_integer('crop-image-size-m', 128, '')
+    tf.app.flags.DEFINE_integer('crop-image-size-n', 128, '')
 
     tf.app.flags.DEFINE_integer('summary-row-size', 4, '')
     tf.app.flags.DEFINE_integer('summary-col-size', 4, '')
