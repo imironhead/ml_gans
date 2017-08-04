@@ -122,15 +122,10 @@ def build_pix2pix(
         learning_rate=0.00001, is_training=True):
     """
     """
-    global_step = tf.get_variable(
-        'global_step',
-        [],
-        trainable=False,
-        initializer=tf.constant_initializer(0, dtype=tf.int64),
-        dtype=tf.int64)
-
-    #
     output_images = build_generator(source_images, is_training)
+
+    if not is_training:
+        return {'source_images': source_images, 'output_images': output_images}
 
     l_loss = tf.reduce_mean(tf.abs(target_images - output_images))
 
@@ -146,6 +141,13 @@ def build_pix2pix(
     g_loss = -tf.reduce_mean(tf.log(g_temp)) + lambda_value * l_loss
 
     #
+    global_step = tf.get_variable(
+        'global_step',
+        [],
+        trainable=False,
+        initializer=tf.constant_initializer(0, dtype=tf.int64),
+        dtype=tf.int64)
+
     t_vars = tf.trainable_variables()
 
     d_variables = [v for v in t_vars if v.name.startswith('d_')]
