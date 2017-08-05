@@ -76,13 +76,13 @@ def build_generator(source_images, is_training):
         print flow.shape
 
     # decoder
-    for i, k in reversed(list(enumerate(ks[:-1]))):
+    for i, k in reversed(list(enumerate(ks))):
         # convolution -> batch norm
         flow = tf.contrib.layers.convolution2d_transpose(
             inputs=flow,
             num_outputs=k,
             kernel_size=4,
-            stride=2,
+            stride=1 if i + 1 == len(ks) else 2,
             padding='SAME',
             normalizer_fn=tf.contrib.layers.batch_norm,
             weights_initializer=weights_initializer,
@@ -90,13 +90,15 @@ def build_generator(source_images, is_training):
             reuse=False)
 
         # drop out
-        flow = tf.contrib.layers.dropout(flow, is_training=is_training)
+        if i + 3 >= len(ks):
+            flow = tf.contrib.layers.dropout(flow, is_training=is_training)
 
         # relu
         flow = tf.nn.relu(flow)
 
         # skip connection
-        flow = tf.concat([flow, encoders[i]], axis=3)
+        if i + 1 < len(ks):
+            flow = tf.concat([flow, encoders[i]], axis=3)
 
         print flow.shape
 
@@ -107,7 +109,7 @@ def build_generator(source_images, is_training):
         kernel_size=4,
         stride=2,
         padding='SAME',
-        normalizer_fn=tf.nn.tanh,
+        activation_fn=tf.nn.tanh,
         weights_initializer=weights_initializer,
         scope='g_out',
         reuse=False)
