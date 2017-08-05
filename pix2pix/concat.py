@@ -8,13 +8,17 @@ import tensorflow as tf
 
 FLAGS = tf.app.flags.FLAGS
 
-tf.app.flags.DEFINE_string('hi-images-dir-path', '', '')
-tf.app.flags.DEFINE_string('lo-images-dir-path', '', '')
-tf.app.flags.DEFINE_string('hl-images-dir-path', '', '')
+tf.app.flags.DEFINE_string(
+    'hi-images-dir-path', None, 'path to the dir of images for upper part')
+tf.app.flags.DEFINE_string(
+    'lo-images-dir-path', None, 'path to the dir of images for lower part')
+tf.app.flags.DEFINE_string(
+    'hl-images-dir-path', None, 'path to the dir for keeping result')
 
 
 def concat(path_image_hi, path_image_lo, path_image_hl):
     """
+    concat the upper and lower part images to the result one.
     """
     image_hi = misc.imread(path_image_hi)
     image_lo = misc.imread(path_image_lo)
@@ -26,12 +30,14 @@ def concat(path_image_hi, path_image_lo, path_image_hl):
 def enumerate_images(
         path_images_dir_hi, path_images_dir_lo, path_images_dir_hl):
     """
+    enumerate all paired images
     """
     hi_lo_hl_paths = []
 
     names_image_hi = os.listdir(path_images_dir_hi)
     names_image_lo = os.listdir(path_images_dir_lo)
 
+    # assume images in path_images_dir_hi and path_images_dir_lo are paired
     if len(names_image_hi) != len(names_image_lo):
         raise Exception('number of images from 2 dirs are not the same')
 

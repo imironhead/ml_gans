@@ -8,17 +8,28 @@ from model import build_pix2pix
 
 FLAGS = tf.app.flags.FLAGS
 
-tf.app.flags.DEFINE_float('lambda-value', 500.0, '')
-tf.app.flags.DEFINE_float('learning-rate', 0.0001, '')
-tf.app.flags.DEFINE_string('logs-dir-path', '', '')
-tf.app.flags.DEFINE_string('ckpt-dir-path', '', '')
-tf.app.flags.DEFINE_string('images-path', '', '')
-tf.app.flags.DEFINE_string('source-image-path', '', '')
-tf.app.flags.DEFINE_string('target-image-path', '', '')
-tf.app.flags.DEFINE_boolean('is-training', True, '')
-tf.app.flags.DEFINE_boolean('swap-images', False, '')
-tf.app.flags.DEFINE_integer('batch-size', 1, '')
-tf.app.flags.DEFINE_integer('crop-image-size', 512, '')
+tf.app.flags.DEFINE_float(
+    'lambda-value', 100.0, 'weight of L1 loss for the generator')
+tf.app.flags.DEFINE_float(
+    'learning-rate', 0.0001, 'learning rate')
+tf.app.flags.DEFINE_string(
+    'logs-dir-path', None, 'path to the directory for logs')
+tf.app.flags.DEFINE_string(
+    'ckpt-dir-path', None, 'path to the directory for checkpoint')
+tf.app.flags.DEFINE_string(
+    'images-path', None, 'path to the source-target image for training')
+tf.app.flags.DEFINE_string(
+    'source-image-path', None, 'path to the source image for translation')
+tf.app.flags.DEFINE_string(
+    'target-image-path', None, 'path to the target image for translation')
+tf.app.flags.DEFINE_boolean(
+    'is-training', True, 'build and train the model')
+tf.app.flags.DEFINE_boolean(
+    'swap-images', False, 'swap source-target image to target-source one')
+tf.app.flags.DEFINE_integer(
+    'batch-size', 1, 'batch size for training')
+tf.app.flags.DEFINE_integer(
+    'crop-image-size', 512, 'how to crop the training image for training')
 
 
 def build_dataset_reader():
@@ -28,13 +39,15 @@ def build_dataset_reader():
     [ image_lo ]
 
     return:
-        image batch with 6 channels, [image_hi, image_lo]
+        2 image batchs: source_images, target_images
     """
     if FLAGS.is_training:
+        # load image batch for traning
     paths_wildcards = os.path.join(FLAGS.images_path, '*.jpg')
 
     paths_image = glob.glob(paths_wildcards)
     else:
+        # load 1 image for translation
         paths_image = [FLAGS.source_image_path]
 
     file_name_queue = tf.train.string_input_producer(paths_image)
@@ -85,6 +98,7 @@ def build_dataset_reader():
 
 def build_summaries(model):
     """
+    build image summary: [source batch, target batch, result batch]
     """
     keys = ['source_images', 'target_images', 'output_images']
 
@@ -103,6 +117,7 @@ def build_summaries(model):
 
 def build_output(model):
     """
+    save translation result to FLAGS.target_image_path.
     """
     images = tf.concat(
         [model['source_images'], model['output_images']], axis=2)
@@ -118,6 +133,7 @@ def build_output(model):
 
 def train():
     """
+    build and train the pix2pix model.
     """
     ckpt_source_path = tf.train.latest_checkpoint(FLAGS.ckpt_dir_path)
     ckpt_target_path = os.path.join(FLAGS.ckpt_dir_path, 'model.ckpt')
@@ -181,6 +197,7 @@ def train():
 
 def translate():
     """
+    restore the model and translate an image.
     """
     ckpt_source_path = tf.train.latest_checkpoint(FLAGS.ckpt_dir_path)
 
