@@ -86,14 +86,11 @@ def build_dataset_reader():
 def build_summaries(model):
     """
     """
-    images = []
+    keys = ['source_images', 'target_images', 'output_images']
 
-    for k in ['source_images', 'target_images', 'output_images']:
-        temp = tf.reshape(model[k], [1, FLAGS.batch_size * 256, 256, 3])
+    images = tf.concat([model[k] for k in keys], axis=2)
 
-        images.append(temp)
-
-    images = tf.concat(images, axis=2)
+    images = tf.reshape(images, [1, FLAGS.batch_size * 256, 768, 3])
 
     images = tf.saturate_cast(images * 127.5 + 127.5, tf.uint8)
 
