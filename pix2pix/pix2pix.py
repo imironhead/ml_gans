@@ -43,9 +43,9 @@ def build_dataset_reader():
     """
     if FLAGS.is_training:
         # load image batch for traning
-    paths_wildcards = os.path.join(FLAGS.images_path, '*.jpg')
+        paths_wildcards = os.path.join(FLAGS.images_path, '*.jpg')
 
-    paths_image = glob.glob(paths_wildcards)
+        paths_image = glob.glob(paths_wildcards)
     else:
         # load 1 image for translation
         paths_image = [FLAGS.source_image_path]
@@ -84,10 +84,10 @@ def build_dataset_reader():
     image = tf.image.resize_images(image, [256, 256])
 
     if FLAGS.is_training:
-    # create bacth
-    batch_tensors = tf.train.batch(
-        tensors=[image],
-        batch_size=FLAGS.batch_size,
+        # create bacth
+        batch_tensors = tf.train.batch(
+            tensors=[image],
+            batch_size=FLAGS.batch_size,
             capacity=FLAGS.batch_size * 8)
     else:
         batch_tensors = tf.reshape(image, [1, 256, 256, 6])
