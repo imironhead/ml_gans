@@ -13,6 +13,9 @@ from model import build_cycle_gan
 
 FLAGS = tf.app.flags.FLAGS
 
+tf.app.flags.DEFINE_float(
+    'learning-rate', 0.0002, '')
+
 tf.app.flags.DEFINE_string(
     'logs-dir-path', None, 'path to the directory for logs')
 tf.app.flags.DEFINE_string(
@@ -29,6 +32,16 @@ tf.app.flags.DEFINE_integer(
     'batch-size', 1, 'batch size for training')
 tf.app.flags.DEFINE_integer(
     'history-size', 50, 'history size for training discriminator')
+tf.app.flags.DEFINE_integer(
+    'checkpoint-step', 10000, '')
+tf.app.flags.DEFINE_integer(
+    'summary-train-image-step', 100, '')
+tf.app.flags.DEFINE_integer(
+    'summary-valid-image-step', 10000, '')
+tf.app.flags.DEFINE_integer(
+    'learning-rate-decay-head-at-step', 10, '')
+tf.app.flags.DEFINE_integer(
+    'learning-rate-decay-tail-at-step', 20, '')
 
 
 def update_image_pool(image_pool, xs_fake, ys_fake):
@@ -90,10 +103,7 @@ def build_batch_reader(paths_image, batch_size):
     image = tf.image.random_flip_left_right(image)
 
     # create bacth
-    return tf.train.batch(
-        tensors=[image],
-        batch_size=batch_size,
-        capacity=batch_size)
+    return tf.train.batch(tensors=[image], batch_size=batch_size)
 
 
 def build_image_batch_reader(dir_path, batch_size):
@@ -149,19 +159,23 @@ def build_summaries(model):
 def train_one_step(model, summaries, image_pool, reporter):
     """
     """
+    lrd_head = FLAGS.learning_rate_decay_head_at_step
+    lrd_tail = FLAGS.learning_rate_decay_tail_at_step
+
     session = tf.get_default_session()
 
     step = session.run(model['step'])
 
-    if step > 300000:
-        return -1
+    if step % FLAGS.checkpoint_step == 0 or step == lrd_tail:
+        ckpt_path = os.path.join(FLAGS.ckpt_dir_path, 'model.ckpt')
 
-    learning_rate = 0.0002
+        tf.train.Saver().save(session, ckpt_path, global_step=model['step'])
 
-    if step > 150000:
-        temp = (300000 - step) / 150000.0
+    if step == lrd_tail:
+        return False
 
-        learning_rate = learning_rate * temp
+    learning_rate = float(lrd_tail - step) / float(lrd_tail - lrd_head)
+    learning_rate = min(1.0, learning_rate) * FLAGS.learning_rate
 
     #
     fetch = {
@@ -175,7 +189,7 @@ def train_one_step(model, summaries, image_pool, reporter):
         model['learning_rate']: learning_rate,
     }
 
-    if step % 100 == 0:
+    if step % FLAGS.summary_train_image_step == 0:
         fetch['summary_images'] = summaries['images']
 
     fetched = session.run(fetch, feed_dict=feeds)
@@ -204,14 +218,13 @@ def train_one_step(model, summaries, image_pool, reporter):
 
     reporter.add_summary(fetched['summary_loss'], step)
 
-    return step
+    return True
 
 
 def train():
     """
     """
     ckpt_source_path = tf.train.latest_checkpoint(FLAGS.ckpt_dir_path)
-    ckpt_target_path = os.path.join(FLAGS.ckpt_dir_path, 'model.ckpt')
 
     xx_real = build_image_batch_reader(
         FLAGS.x_images_dir_path, FLAGS.batch_size)
@@ -245,14 +258,8 @@ def train():
         coord = tf.train.Coordinator()
         threads = tf.train.start_queue_runners(coord=coord)
 
-        while step >= 0:
-            step = train_one_step(model, summaries, image_pool, reporter)
-
-            if step % 1000 == 0:
-                tf.train.Saver().save(
-                    session, ckpt_target_path, global_step=model['step'])
-
-            print('step: {}'.format(step))
+        while train_one_step(model, summaries, image_pool, reporter):
+            pass
 
         coord.request_stop()
         coord.join(threads)

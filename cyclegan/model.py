@@ -245,7 +245,11 @@ def build_generator(flow, name, reuse=None):
     with tf.variable_scope(name, reuse=reuse):
         print_tensor(flow)
 
-        flow = build_c_layer(flow, 'c7s1-64', num_outputs=64)
+        flow = build_c_layer(flow, 'c7s1-32', num_outputs=32)
+
+        print_tensor(flow)
+
+        flow = build_d_layer(flow, 'd64', num_outputs=64)
 
         print_tensor(flow)
 
@@ -253,20 +257,16 @@ def build_generator(flow, name, reuse=None):
 
         print_tensor(flow)
 
-        flow = build_d_layer(flow, 'd256', num_outputs=256)
-
-        print_tensor(flow)
-
         for i in range(9):
-            flow = build_r_layer(flow, 'r256-{}'.format(i), num_outputs=256)
+            flow = build_r_layer(flow, 'r128-{}'.format(i), num_outputs=128)
 
             print_tensor(flow)
 
-        flow = build_u_layer(flow, 'u128', num_outputs=128)
+        flow = build_u_layer(flow, 'u64', num_outputs=64)
 
         print_tensor(flow)
 
-        flow = build_u_layer(flow, 'u64', num_outputs=64)
+        flow = build_u_layer(flow, 'u32', num_outputs=32)
 
         print_tensor(flow)
 
