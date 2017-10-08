@@ -4,9 +4,13 @@ build_history: gx_history, fy_history
 build_reader: x_images, y_images
 
 """
+import glob
 import numpy as np
 import os
+import scipy.misc
 import tensorflow as tf
+
+from six.moves import range
 
 from model import build_cycle_gan
 
@@ -30,6 +34,10 @@ tf.app.flags.DEFINE_string(
     'source-image-path', None, 'path to source test image')
 tf.app.flags.DEFINE_string(
     'result-image-path', None, 'path to result test image')
+tf.app.flags.DEFINE_string(
+    'source-images-dir-path', None, 'path to source test image')
+tf.app.flags.DEFINE_string(
+    'result-images-dir-path', None, 'path to result test image')
 
 tf.app.flags.DEFINE_boolean(
     'is-training', True, 'build and train the model')
@@ -271,52 +279,70 @@ def train():
         coord.join(threads)
 
 
+def prepare_paths():
+    """
+    """
+    image_path_pairs = []
+
+    if FLAGS.source_image_path is not None:
+        image_path_pairs.append(
+            [FLAGS.source_image_path, FLAGS.result_image_path])
+
+    if FLAGS.source_images_dir_path is not None:
+        jpg_names = glob.glob(
+            os.path.join(FLAGS.source_images_dir_path, '*.jpg'))
+        png_names = glob.glob(
+            os.path.join(FLAGS.source_images_dir_path, '*.png'))
+
+        jpg_names = [os.path.basename(name) for name in jpg_names]
+        png_names = [os.path.basename(name) for name in png_names]
+
+        src_names = jpg_names + png_names
+
+        for src_name in src_names:
+            tar_name = 'test_{}.png'.format(src_name[:-4])
+
+            image_path_pairs.append([
+                os.path.join(FLAGS.source_images_dir_path, src_name),
+                os.path.join(FLAGS.result_images_dir_path, tar_name)])
+
+    return image_path_pairs
+
+
 def translate():
     """
     """
-    # source image
-    paths_images = [FLAGS.source_image_path]
+    image_path_pairs = prepare_paths()
 
-    file_name_queue = tf.train.string_input_producer(paths_images)
+    reals = tf.placeholder(shape=[None, 256, 256, 3], dtype=tf.uint8)
 
-    reader = tf.WholeFileReader()
+    flow = tf.cast(reals, dtype=tf.float32) / 127.5 - 1.0
 
-    reader_key, reader_val = reader.read(file_name_queue)
+    model = build_cycle_gan(flow, flow, FLAGS.mode)
 
-    image = tf.image.decode_jpeg(reader_val, channels=3)
-
-    image = tf.cast(image, dtype=tf.float32) / 127.5 - 1.0
-
-    image = tf.expand_dims(image, 0)
-
-    # build model
-    model = build_cycle_gan(image, image, FLAGS.mode)
-
-    # target image writer
-    target_image = model['fake'][0] * 127.5 + 127.5
-    target_image = tf.saturate_cast(target_image, tf.uint8)
-    target_image = tf.image.encode_jpeg(target_image)
-
-    target_image_writer = tf.write_file(FLAGS.result_image_path, target_image)
+    fakes = tf.saturate_cast(model['fake'] * 127.5 + 127.5, tf.uint8)
 
     # path to checkpoint
     ckpt_source_path = tf.train.latest_checkpoint(FLAGS.ckpt_dir_path)
 
-    # translate
     with tf.Session() as session:
         session.run(tf.global_variables_initializer())
         session.run(tf.local_variables_initializer())
 
         tf.train.Saver().restore(session, ckpt_source_path)
 
-        # make dataset reader work
-        coord = tf.train.Coordinator()
-        threads = tf.train.start_queue_runners(coord=coord)
+        for i in range(0, len(image_path_pairs), FLAGS.batch_size):
+            path_pairs = image_path_pairs[i:i+FLAGS.batch_size]
 
-        session.run(target_image_writer)
+            real_images = [scipy.misc.imread(p[0]) for p in path_pairs]
 
-        coord.request_stop()
-        coord.join(threads)
+            fake_images = session.run(fakes, feed_dict={reals: real_images})
+
+            for idx, path in enumerate(path_pairs):
+                image = np.concatenate(
+                    [real_images[idx], fake_images[idx]], axis=1)
+
+                scipy.misc.imsave(path[1], image)
 
 
 def main(_):

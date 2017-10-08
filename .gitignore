@@ -92,4 +92,5 @@ ENV/
 */logs/
 */checkpoints/
 */outputs/
-*/ckpts/
+*/ckpt/
+*/test/
