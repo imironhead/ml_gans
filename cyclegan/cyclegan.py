@@ -17,6 +17,8 @@ tf.app.flags.DEFINE_float(
     'learning-rate', 0.0002, '')
 
 tf.app.flags.DEFINE_string(
+    'mode', 'gx', 'gx / fy')
+tf.app.flags.DEFINE_string(
     'logs-dir-path', None, 'path to the directory for logs')
 tf.app.flags.DEFINE_string(
     'ckpt-dir-path', None, 'path to the directory for checkpoint')
@@ -24,6 +26,10 @@ tf.app.flags.DEFINE_string(
     'x-images-dir-path', None, 'path to the dir for image x')
 tf.app.flags.DEFINE_string(
     'y-images-dir-path', None, 'path to the dir for image y')
+tf.app.flags.DEFINE_string(
+    'source-image-path', None, 'path to source test image')
+tf.app.flags.DEFINE_string(
+    'result-image-path', None, 'path to result test image')
 
 tf.app.flags.DEFINE_boolean(
     'is-training', True, 'build and train the model')
@@ -234,7 +240,7 @@ def train():
 
     image_pool = {}
 
-    model = build_cycle_gan(xx_real, yy_real, True)
+    model = build_cycle_gan(xx_real, yy_real, '')
 
     summaries = build_summaries(model)
 
@@ -265,10 +271,58 @@ def train():
         coord.join(threads)
 
 
+def translate():
+    """
+    """
+    # source image
+    paths_images = [FLAGS.source_image_path]
+
+    file_name_queue = tf.train.string_input_producer(paths_images)
+
+    reader = tf.WholeFileReader()
+
+    reader_key, reader_val = reader.read(file_name_queue)
+
+    image = tf.image.decode_jpeg(reader_val, channels=3)
+
+    image = tf.cast(image, dtype=tf.float32) / 127.5 - 1.0
+
+    image = tf.expand_dims(image, 0)
+
+    # build model
+    model = build_cycle_gan(image, image, FLAGS.mode)
+
+    # target image writer
+    target_image = model['fake'][0] * 127.5 + 127.5
+    target_image = tf.saturate_cast(target_image, tf.uint8)
+    target_image = tf.image.encode_jpeg(target_image)
+
+    target_image_writer = tf.write_file(FLAGS.result_image_path, target_image)
+
+    # path to checkpoint
+    ckpt_source_path = tf.train.latest_checkpoint(FLAGS.ckpt_dir_path)
+
+    # translate
+    with tf.Session() as session:
+        session.run(tf.global_variables_initializer())
+        session.run(tf.local_variables_initializer())
+
+        tf.train.Saver().restore(session, ckpt_source_path)
+
+        # make dataset reader work
+        coord = tf.train.Coordinator()
+        threads = tf.train.start_queue_runners(coord=coord)
+
+        session.run(target_image_writer)
+
+        coord.request_stop()
+        coord.join(threads)
+
+
 def main(_):
     """
     """
-    train()
+    train() if FLAGS.is_training else translate()
 
 
 if __name__ == '__main__':

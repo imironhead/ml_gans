@@ -278,9 +278,15 @@ def build_generator(flow, name, reuse=None):
     return flow
 
 
-def build_cycle_gan(xx_real, yy_real, is_training):
+def build_cycle_gan(xx_real, yy_real, mode):
     """
     """
+    if mode == 'gx' or mode == 'fy':
+        real = xx_real if mode == 'gx' else yy_real
+        fake = build_generator(real, mode + '_')
+
+        return {'real': real, 'fake': fake}
+
     gx_pool = tf.placeholder(shape=[None, 256, 256, 3], dtype=tf.float32)
     fy_pool = tf.placeholder(shape=[None, 256, 256, 3], dtype=tf.float32)
 
